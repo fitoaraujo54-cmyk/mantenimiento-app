@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solicitud de Mantenimiento - Firebase</title>
+<style>
+body{margin:0;background:#eef3f8;font-family:Arial;color:#333;font-size:14px}
+.header{background:#0b4f8a;color:white;padding:14px 16px;border-radius:0 0 16px 16px}
+.header h1{margin:0;font-size:18px}
+.card{background:white;margin:12px;padding:14px;border-radius:16px;box-shadow:0 3px 10px #ccc}
+.card h3{margin:6px 0 10px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px}
+.grid>div{margin-bottom:2px}
+label{font-size:12.5px;color:#555;display:block;margin-bottom:2px}
+input,select,textarea,button{width:100%;padding:7px 8px;border-radius:8px;border:1px solid #ddd;margin-top:2px;font-size:14px;box-sizing:border-box}
+textarea{height:44px;resize:vertical}
+button{background:#16a34a;color:white;border:0;font-size:15px;margin-top:12px;padding:11px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{background:#0b4f8a;color:white}
+td,th{border:1px solid #ddd;padding:6px}
+@media(max-width:340px){.grid{grid-template-columns:1fr}}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+
+<!-- VERSION 3.1
+Preparada para integración de lectura inteligente:
+- Captura de imagen desde cámara/galería
+- Extracción de datos mediante modelo multimodal
+- Guardado en Firestore
+
+Pendiente de agregar la llamada segura a Gemini mediante Firebase Functions
+(no colocar la API Key directamente en el HTML).
+-->
+
+</head>
+<body>
+<div class="header">
+<h1><span id="llave" onclick="tocarLlave()" style="cursor:pointer;user-select:none">🔧</span> SOLICITUD DE MANTENIMIENTO</h1>
+<div id="pistaLlave" style="font-size:10.5px;opacity:.85;margin-top:3px">Toca la llave 5 veces seguidas para el panel de administración</div>
+</div>
+
+<div class="card">
+<h3>📝 Nueva Solicitud</h3>
+
+<button id="btnFoto" onclick="fotoInput.click()" style="background:#0b4f8a">📷 TOMAR FOTO Y LLENAR AUTOMÁTICO</button>
+<input id="fotoInput" type="file" accept="image/*" capture="environment" style="display:none" onchange="extraerDeFoto(this.files[0])">
+
+<button id="btnGaleria" onclick="galeriaInput.click()" style="background:#0b4f8a;margin-top:8px">🖼️ SUBIR FOTO DESDE MIS CARPETAS</button>
+<input id="galeriaInput" type="file" accept="image/*" style="display:none" onchange="extraerDeFoto(this.files[0])">
+
+<div id="estadoFoto" style="font-size:12px;text-align:center;margin-top:4px;color:#555"></div>
+
+<div class="grid" style="margin-top:12px">
+<div><label>Fecha</label><input id="fecha" type="date"></div>
+<div><label>Hora</label><input id="hora" type="time"></div>
+<div><label>Solicitante</label><input id="solicitante"></div>
+<div><label>Planta / Zona</label><input id="planta"></div>
+<div><label>Turno</label><select id="turno"><option>I</option><option>II</option></select></div>
+<div><label>Máquina</label><input id="maquina"></div>
+</div>
+
+<label>Servicio solicitado</label>
+<textarea id="servicio"></textarea>
+
+<h3>🔧 Recepción</h3>
+<div class="grid">
+<div><label>Recepcionado por</label><input id="recepcionado"></div>
+<div><label>Empresa</label><input id="empresa"></div>
+<div><label>Estado</label>
+<select id="estado">
+<option>Pendiente</option>
+<option>Recepcionado</option>
+<option>En evaluación</option>
+<option>En reparación</option>
+<option>Atendido</option>
+<option>Cerrado</option>
+</select></div>
+<div><label>Fecha recepción</label><input id="frec" type="date"></div>
+<div><label>Hora recepción</label><input id="hrec" type="time"></div>
+</div>
+
+<button onclick="guardar()">REGISTRAR SOLICITUD</button>
+</div>
+
+<div class="card">
+<h3>📋 Registro</h3>
+<table>
+<thead><tr><th>Código</th><th>Máquina</th><th>Servicio</th><th>Estado</th></tr></thead>
+<tbody id="tabla"></tbody>
+</table>
+</div>
+
+<!-- Ventana para pedir la clave -->
+<div id="overlayClave" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:999;align-items:center;justify-content:center;padding:20px;box-sizing:border-box">
+<div style="background:white;border-radius:16px;padding:20px;width:100%;max-width:320px">
+<h3 style="margin-top:0">🔒 Acceso restringido</h3>
+<label>Ingresa la clave</label>
+<input id="claveInput" type="password" placeholder="Clave" onkeydown="if(event.key==='Enter')verificarClave()">
+<button onclick="verificarClave()">Ingresar</button>
+<button onclick="cerrarOverlayClave()" style="background:#999">Cancelar</button>
+</div>
+</div>
+
+<!-- Panel de administración: descarga de Excel y modificar estados -->
+<div id="panelAdmin" style="display:none;position:fixed;inset:0;background:#eef3f8;z-index:998;overflow:auto;padding:15px;box-sizing:border-box">
+<h3 style="margin-top:0">⚙️ Panel de administración</h3>
+<button onclick="descargarExcel()">⬇️ DESCARGAR EXCEL</button>
+<h3>📋 Modificar estado de solicitudes</h3>
+<div id="listaAdmin"></div>
+<button onclick="cerrarSesionAdmin()" style="background:#dc2626;margin-top:20px">CERRAR SESIÓN Y VOLVER</button>
+</div>
+
+<script>
+let n=1;
+let registros=[];
+
+async function guardar(){
+const codigo=`SR-${String(n).padStart(4,'0')}`;
+const registro={
+"Código":codigo,
+"Fecha":fecha.value,
+"Hora":hora.value,
+"Solicitante":solicitante.value,
+"Planta / Zona":planta.value,
+"Turno":turno.value,
+"Máquina":maquina.value,
+"Servicio solicitado":servicio.value,
+"Recepcionado por":recepcionado.value,
+"Empresa":empresa.value,
+"Estado":estado.value,
+"Fecha recepción":frec.value,
+"Hora recepción":hrec.value
+};
+registros.push(registro);
+
+try{
+ const ref = await window.addDoc(window.collection(window.db,"solicitudes"), registro);
+ registro._id = ref.id;
+}catch(e){
+ console.error("Error guardando en Firebase",e);
+ estadoFoto.textContent='⚠️ Se guardó localmente pero no se pudo enviar a Firebase (revisa tu conexión).';
+}
+
+refrescarTabla();
+n++;
+
+// limpiar formulario para la siguiente solicitud
+fecha.value='';hora.value='';solicitante.value='';planta.value='';maquina.value='';
+servicio.value='';recepcionado.value='';empresa.value='';frec.value='';hrec.value='';
+turno.selectedIndex=0;estado.selectedIndex=0;
+
+alert(`Solicitud ${codigo} registrada. Total guardadas: ${registros.length}`);
+}
+
+function refrescarTabla(){
+tabla.innerHTML='';
+registros.forEach((r,i)=>{
+tabla.innerHTML+=`<tr><td>${r["Código"]}</td><td>${r["Máquina"]}</td><td>${r["Servicio solicitado"]}</td><td>${r["Estado"]}</td></tr>`;
+});
+}
+
+// Contador de toques sobre la llave 🔧
+let toques=0;
+let temporizador=null;
+
+function tocarLlave(){
+toques++;
+pistaLlave.textContent=`Toques: ${toques}/5`;
+
+if(temporizador) clearTimeout(temporizador);
+temporizador=setTimeout(()=>{
+toques=0;
+pistaLlave.textContent='Toca la llave 5 veces seguidas para el panel de administración';
+},1500);
+
+if(toques>=5){
+toques=0;
+clearTimeout(temporizador);
+pistaLlave.textContent='Toca la llave 5 veces seguidas para el panel de administración';
+abrirOverlayClave();
+}
+}
+
+const CLAVE_ADMIN='roger10';
+
+function abrirOverlayClave(){
+claveInput.value='';
+overlayClave.style.display='flex';
+setTimeout(()=>claveInput.focus(),100);
+}
+
+function cerrarOverlayClave(){
+overlayClave.style.display='none';
+}
+
+function verificarClave(){
+if(claveInput.value.trim().toLowerCase()===CLAVE_ADMIN){
+overlayClave.style.display='none';
+abrirPanelAdmin();
+}else{
+alert('Clave incorrecta.');
+}
+}
+
+function abrirPanelAdmin(){
+panelAdmin.style.display='block';
+refrescarListaAdmin();
+}
+
+function cerrarSesionAdmin(){
+panelAdmin.style.display='none';
+}
+
+const opcionesEstado=['Pendiente','Recepcionado','En evaluación','En reparación','Atendido','Cerrado'];
+
+function refrescarListaAdmin(){
+if(registros.length===0){
+listaAdmin.innerHTML='<p>Todavía no hay solicitudes registradas.</p>';
+return;
+}
+listaAdmin.innerHTML=registros.map((r,i)=>{
+const opciones=opcionesEstado.map(op=>`<option ${r["Estado"]===op?'selected':''}>${op}</option>`).join('');
+return `<div class="card" style="margin:10px 0;padding:12px">
+<b>${r["Código"]}</b> — ${r["Máquina"]}<br>
+<span style="font-size:12px;color:#666">${r["Servicio solicitado"]}</span>
+<label style="margin-top:8px">Estado</label>
+<select onchange="cambiarEstado(${i},this.value)">${opciones}</select>
+</div>`;
+}).join('');
+}
+
+async function cambiarEstado(i,valor){
+registros[i]["Estado"]=valor;
+refrescarTabla();
+const idFirebase=registros[i]._id;
+if(idFirebase){
+try{
+await window.updateDoc(window.doc(window.db,"solicitudes",idFirebase),{Estado:valor});
+}catch(e){
+console.error("Error actualizando estado en Firebase",e);
+}
+}
+}
+
+async function extraerDeFoto(archivo){
+if(!archivo) return;
+estadoFoto.textContent='📷 Leyendo la foto, espera un momento...';
+btnFoto.disabled=true;
+btnGaleria.disabled=true;
+
+try{
+const base64=await new Promise((resolve,reject)=>{
+const lector=new FileReader();
+lector.onload=()=>resolve(lector.result.split(',')[1]);
+lector.onerror=()=>reject(new Error('No se pudo leer la imagen'));
+lector.readAsDataURL(archivo);
+});
+
+const tipoMedia=archivo.type||'image/jpeg';
+
+const prompt=`Esta imagen es una hoja de "Solicitud de Reparación o Mantenimiento" llenada a mano. Extrae los siguientes datos y responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional, sin explicación, sin markdown, con exactamente estas claves:
+{
+"fecha": "AAAA-MM-DD o vacío si no se ve",
+"hora": "HH:MM en formato 24h o vacío",
+"solicitante": "nombre del solicitante",
+"planta": "planta o zona",
+"turno": "I o II según lo escrito (si dice 1 pon I, si dice 2 pon II)",
+"maquina": "código o nombre de la máquina",
+"servicio": "descripción del servicio solicitado, incluye tipo de mantenimiento (correctivo/preventivo/ajustes) y lo marcado en la lista de servicio si es legible",
+"recepcionado": "nombre de quien recepciona",
+"empresa": "empresa de quien recepciona",
+"frec": "fecha de recepción AAAA-MM-DD o vacío",
+"hrec": "hora de recepción HH:MM o vacío"
+}
+Si algún dato no aparece o no es legible, deja el valor como cadena vacía "". No inventes datos.`;
+
+const respuesta=await window.modeloIA.generateContent([
+{inlineData:{mimeType:tipoMedia,data:base64}},
+prompt
+]);
+
+const textoRespuesta=respuesta.response.text();
+const limpio=textoRespuesta.replace(/```json|```/g,'').trim();
+const campos=JSON.parse(limpio);
+
+if(campos.fecha) fecha.value=campos.fecha;
+if(campos.hora) hora.value=campos.hora;
+if(campos.solicitante) solicitante.value=campos.solicitante;
+if(campos.planta) planta.value=campos.planta;
+if(campos.turno) turno.value=campos.turno;
+if(campos.maquina) maquina.value=campos.maquina;
+if(campos.servicio) servicio.value=campos.servicio;
+if(campos.recepcionado) recepcionado.value=campos.recepcionado;
+if(campos.empresa) empresa.value=campos.empresa;
+if(campos.frec) frec.value=campos.frec;
+if(campos.hrec) hrec.value=campos.hrec;
+
+estadoFoto.textContent='✅ Datos llenados. Revísalos antes de registrar.';
+}catch(error){
+console.error(error);
+estadoFoto.textContent='❌ Error: '+(error && error.message ? error.message : 'desconocido');
+}finally{
+btnFoto.disabled=false;
+btnGaleria.disabled=false;
+fotoInput.value='';
+galeriaInput.value='';
+}
+}
+
+function descargarExcel(){
+if(registros.length===0){
+alert('Todavía no hay solicitudes registradas.');
+return;
+}
+const datosLimpios=registros.map(r=>{
+const copia={...r};
+delete copia._id;
+return copia;
+});
+const hoja=XLSX.utils.json_to_sheet(datosLimpios);
+
+// Anchos de columna personalizados (en caracteres) para que se pueda leer todo sin apretar
+const anchoPorColumna={
+"Recepcionado por":20,
+"Hora":10,
+"Estado":14,
+"Servicio solicitado":45,
+"Fecha":13,
+"Hora recepción":15,
+"Turno":9,
+"Máquina":16,
+"Código":12,
+"Fecha recepción":16,
+"Empresa":22,
+"Planta / Zona":16,
+"Solicitante":18
+};
+const encabezados=Object.keys(datosLimpios[0]||{});
+hoja['!cols']=encabezados.map(h=>({wch:anchoPorColumna[h]||16}));
+
+const totalFilas=datosLimpios.length+1; // +1 por el encabezado
+const rango=XLSX.utils.decode_range(hoja['!ref']);
+
+const estiloEncabezado={
+font:{name:"Arial",sz:10,bold:true,color:{rgb:"FFFFFF"}},
+fill:{fgColor:{rgb:"1F4E78"}},
+alignment:{horizontal:"center",vertical:"center",wrapText:true},
+border:{
+top:{style:"thin",color:{rgb:"B7B7B7"}},
+bottom:{style:"thin",color:{rgb:"B7B7B7"}},
+left:{style:"thin",color:{rgb:"B7B7B7"}},
+right:{style:"thin",color:{rgb:"B7B7B7"}}
+}
+};
+const estiloCelda={
+font:{name:"Arial",sz:10},
+alignment:{horizontal:"left",vertical:"center",wrapText:true},
+border:{
+top:{style:"thin",color:{rgb:"B7B7B7"}},
+bottom:{style:"thin",color:{rgb:"B7B7B7"}},
+left:{style:"thin",color:{rgb:"B7B7B7"}},
+right:{style:"thin",color:{rgb:"B7B7B7"}}
+}
+};
+
+for(let f=rango.s.r;f<=rango.e.r;f++){
+for(let c=rango.s.c;c<=rango.e.c;c++){
+const ref=XLSX.utils.encode_cell({r:f,c:c});
+if(!hoja[ref]) continue;
+hoja[ref].s=(f===0)?estiloEncabezado:estiloCelda;
+}
+}
+
+// Altura de fila: encabezado y todas las filas de datos
+hoja['!rows']=Array.from({length:totalFilas},(_,i)=>({hpt:i===0?24:30}));
+
+// Fijar la fila de encabezados al desplazarse
+hoja['!freeze']={xSplit:0,ySplit:1};
+
+const libro=XLSX.utils.book_new();
+XLSX.utils.book_append_sheet(libro,hoja,"Mantenimiento");
+const fechaArchivo=new Date().toISOString().slice(0,10);
+XLSX.writeFile(libro,`Mantenimiento_${fechaArchivo}.xlsx`);
+}
+</script>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app-check.js";
+import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, orderBy, query } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+import { getAI, getGenerativeModel, GoogleAIBackend } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-ai.js";
+
+const firebaseConfig = {
+ apiKey: "AIzaSyABobIjg_8WPq2MMJw1RUKDYAiW_aKiDjY",
+ authDomain: "mantenimiento-app-f1998.firebaseapp.com",
+ projectId: "mantenimiento-app-f1998",
+ storageBucket: "mantenimiento-app-f1998.firebasestorage.app",
+ messagingSenderId: "780571118388",
+ appId: "1:780571118388:web:2005a9a723a2c435117361",
+ measurementId: "G-DQ38PXR54Y"
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+
+// Verificación de aplicaciones (App Check) usando un token de depuración fijo
+// (evita depender de reCAPTCHA en el navegador; funciona siempre en este dispositivo)
+self.FIREBASE_APPCHECK_DEBUG_TOKEN = "BFF57F0A-4B67-40D6-8F1F-2C3344DC9C88";
+initializeAppCheck(firebaseApp, {
+provider: new ReCaptchaEnterpriseProvider('6LfhCaQtAAAAANUCjhTc5Z3CJQpV8c9t_hMmK0Es'),
+isTokenAutoRefreshEnabled: true
+});
+
+// Se exponen globalmente para que las use el script principal
+window.db = getFirestore(firebaseApp);
+window.collection = collection;
+window.addDoc = addDoc;
+window.getDocs = getDocs;
+window.doc = doc;
+window.updateDoc = updateDoc;
+window.orderBy = orderBy;
+window.query = query;
+
+// IA para leer fotos de solicitudes (Firebase AI Logic + Gemini)
+const ai = getAI(firebaseApp, { backend: new GoogleAIBackend() });
+window.modeloIA = getGenerativeModel(ai, { model: "gemini-3.6-flash" });
+
+// Cargar las solicitudes que ya existen en Firebase al abrir la app
+window.addEventListener('DOMContentLoaded', cargarSolicitudes);
+async function cargarSolicitudes(){
+try{
+const q=query(collection(window.db,"solicitudes"),orderBy("Código"));
+const snap=await getDocs(q);
+registros=[];
+snap.forEach(d=>{
+const datos=d.data();
+datos._id=d.id;
+registros.push(datos);
+});
+n=registros.length+1;
+refrescarTabla();
+}catch(e){
+console.error("Error cargando solicitudes",e);
+}
+}
+</script>
+</body>
+</html>
