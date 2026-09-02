@@ -22,17 +22,6 @@ td,th{border:1px solid #ddd;padding:6px}
 @media(max-width:340px){.grid{grid-template-columns:1fr}}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-
-<!-- VERSION 3.1
-Preparada para integración de lectura inteligente:
-- Captura de imagen desde cámara/galería
-- Extracción de datos mediante modelo multimodal
-- Guardado en Firestore
-
-Pendiente de agregar la llamada segura a Gemini mediante Firebase Functions
-(no colocar la API Key directamente en el HTML).
--->
-
 </head>
 <body>
 <div class="header">
@@ -145,7 +134,6 @@ try{
 refrescarTabla();
 n++;
 
-// limpiar formulario para la siguiente solicitud
 fecha.value='';hora.value='';solicitante.value='';planta.value='';maquina.value='';
 servicio.value='';recepcionado.value='';empresa.value='';frec.value='';hrec.value='';
 turno.selectedIndex=0;estado.selectedIndex=0;
@@ -160,7 +148,6 @@ tabla.innerHTML+=`<tr><td>${r["Código"]}</td><td>${r["Máquina"]}</td><td>${r["
 });
 }
 
-// Contador de toques sobre la llave 🔧
 let toques=0;
 let temporizador=null;
 
@@ -344,13 +331,12 @@ const firebaseConfig = {
 
 const firebaseApp = initializeApp(firebaseConfig);
 
-// Verificación de aplicaciones (App Check) con reCAPTCHA Enterprise
+self.FIREBASE_APPCHECK_DEBUG_TOKEN = "BFF57F0A-4B67-40D6-8F1F-2C3344DC9C88";
 initializeAppCheck(firebaseApp, {
-provider: new ReCaptchaEnterpriseProvider('6LfhCaQtAAAAANUCjhTc5Z3CJQpV8c9t_HMmK0Es'),
+provider: new ReCaptchaEnterpriseProvider('6LfhCaQtAAAAANUCjhTc5Z3CJQpV8c9t_hMmK0Es'),
 isTokenAutoRefreshEnabled: true
 });
 
-// Se exponen globalmente para que las use el script principal
 window.db = getFirestore(firebaseApp);
 window.collection = collection;
 window.addDoc = addDoc;
@@ -360,11 +346,9 @@ window.updateDoc = updateDoc;
 window.orderBy = orderBy;
 window.query = query;
 
-// IA para leer fotos de solicitudes (Firebase AI Logic + Gemini)
 const ai = getAI(firebaseApp, { backend: new GoogleAIBackend() });
 window.modeloIA = getGenerativeModel(ai, { model: "gemini-2.5-flash" });
 
-// Cargar las solicitudes que ya existen en Firebase al abrir la app
 window.addEventListener('DOMContentLoaded', cargarSolicitudes);
 async function cargarSolicitudes(){
 try{
