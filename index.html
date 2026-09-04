@@ -127,19 +127,19 @@ if(!confirm(`Ya existe una solicitud con el código ${codigo}. ¿Deseas registra
 }
 
 const registro={
-"Código":codigo,
+"Turno":turno.value,
 "Fecha":fecha.value,
 "Hora":hora.value,
 "Solicitante":solicitante.value,
 "Planta / Zona":planta.value,
-"Turno":turno.value,
 "Máquina":maquina.value,
 "Servicio solicitado":servicio.value,
+"Código":codigo,
 "Recepcionado por":recepcionado.value,
 "Empresa":empresa.value,
-"Estado":estado.value,
 "Fecha recepción":frec.value,
-"Hora recepción":hrec.value
+"Hora recepción":hrec.value,
+"Estado":estado.value
 };
 registros.push(registro);
 
